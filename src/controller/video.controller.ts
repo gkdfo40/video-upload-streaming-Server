@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { MongoClient, GridFSBucket, Db, Document } from 'mongodb'
+import { MongoClient, GridFSBucket, Db } from 'mongodb'
 import config from 'config'
 
 
