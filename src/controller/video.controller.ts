@@ -10,35 +10,41 @@ const client: MongoClient = new MongoClient(dbUri)
 export async function getStreamVideoHandler(req: Request, res: Response) {
     try {
         const range = req.headers.range
-        if (!range) res.status(400).send("Requires Range headers")
+        if (range) {
+            const videoId = req.query.videoId;
+            await client.connect()
+            const db: Db = client.db('videos')
 
-        //const bb: Busboy = busboy({ headers: req.headers })
-        const videoId = req.query.videoId;
-        await client.connect()
-        const db: Db = client.db('videos')
+            const video = await db.collection('fs.files').findOne({ filename: videoId })
 
-        const video = await db.collection('fs.files').findOne({ filename: videoId })
+            const videoSize = video?.length
+            const chunkStart = Number(range?.replace(/\D/g, ""))
+            const chunkEnd = Math.min(chunkStart + CHUNK_SIZE_IN_BYTES, videoSize - 1)
 
-        const videoSize = video?.length
-        const chunkStart = Number(range?.replace(/\D/g, ""))
-        const chunkEnd = Math.min(chunkStart + CHUNK_SIZE_IN_BYTES, videoSize - 1)
+            const contentLength = chunkEnd - chunkStart + 1
+            const headers = {
+                "Content-Range": `bytes ${chunkStart}-${chunkEnd}/${videoSize}`,
+                "Accept-Ranges": "bytes",
+                "Content-Length": contentLength,
+                "Content-Type": "video/mp4",
+            }
 
-        const contentLength = chunkEnd - chunkStart + 1
-        const headers = {
-            "Content-Range": `bytes ${chunkStart}-${chunkEnd}/${videoSize}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": contentLength,
-            "Content-Type": "video/mp4",
+            res.writeHead(206, headers)
+
+            const bucket: GridFSBucket = new GridFSBucket(db)
+            const downloadStream = bucket.openDownloadStreamByName(`${videoId}`, {
+                start: chunkStart,
+                end: chunkEnd,
+            })
+            downloadStream.pipe(res);
+
+        } else {
+            res.status(400).send("Requires Range headers")
         }
 
-        res.writeHead(206, headers)
 
-        const bucket: GridFSBucket = new GridFSBucket(db)
-        const downloadStream = bucket.openDownloadStreamByName(`${videoId}`, {
-            start: chunkStart,
-            end: chunkEnd,
-        })
-        downloadStream.pipe(res);
+        //const bb: Busboy = busboy({ headers: req.headers })
+
 
     } catch (error: any) {
         console.log(error.message);
